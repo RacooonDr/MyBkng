@@ -1330,13 +1330,20 @@ async def admin_booking_detail(callback: types.CallbackQuery):
     except:
         await callback.message.answer(text, reply_markup=booking_actions_keyboard(booking_id, booking['status']))
 
+# ---------- ИСПРАВЛЕННАЯ ФУНКЦИЯ ADMIN_BOOKING_ACTION ----------
 @dp.callback_query(F.data.startswith("booking_"))
 async def admin_booking_action(callback: types.CallbackQuery):
     if not is_admin(callback.from_user.id):
         return
     
-    action, booking_id = callback.data.replace("booking_", "").split("_", 1)
-    booking_id = int(booking_id)
+    # Парсим данные: booking_confirm_1 -> action="confirm", booking_id="1"
+    parts = callback.data.replace("booking_", "").rsplit("_", 1)
+    if len(parts) != 2:
+        await callback.answer("❌ Неверный формат данных")
+        return
+    
+    action, booking_id_str = parts
+    booking_id = int(booking_id_str)
     
     bookings = get_bookings()
     booking = None
@@ -1395,6 +1402,9 @@ async def admin_booking_action(callback: types.CallbackQuery):
     
     save_bookings(bookings)
     await callback.answer(f"✅ Статус изменен")
+    
+    # После изменения возвращаемся к деталям записи
+    callback.data = f"admin_booking_{booking_id}"
     await admin_booking_detail(callback)
 
 # ---------- МОДЕРАЦИЯ ОТЗЫВОВ ----------

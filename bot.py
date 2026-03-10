@@ -119,6 +119,9 @@ class AdminStates(StatesGroup):
     adding_service_desc = State()
     broadcast_message = State()
     broadcast_confirm = State()
+    waiting_promo_user_id = State()
+    waiting_promo_discount = State()
+    waiting_promo_confirm = State()
 
 # ============================================
 # ПРОВЕРКА НА АДМИНА
@@ -179,13 +182,10 @@ async def check_reminders():
                 if booking['status'] != 'confirmed':
                     continue
                 
-                # Парсим дату записи
                 booking_date = datetime.strptime(f"{booking['date']} {booking['time']}", "%Y-%m-%d %H:%M")
                 time_diff = booking_date - now
                 
-                # Если до записи 24 часа (+- 1 час) и еще не отправляли напоминание
                 if timedelta(hours=23) < time_diff < timedelta(hours=25) and not booking.get('reminded'):
-                    # Отправляем напоминание клиенту
                     await notify_user(
                         booking['user_id'],
                         f"⏰ <b>Напоминание о записи!</b>\n\n"
@@ -193,17 +193,14 @@ async def check_reminders():
                         f"Ждем вас!"
                     )
                     
-                    # Отмечаем, что напоминание отправлено
                     booking['reminded'] = True
                     save_bookings(bookings)
                     
-                    # Уведомляем админа
                     await notify_admin(
                         f"⏰ Отправлено напоминание клиенту @{booking['username']}\n"
                         f"Запись завтра в {booking['time']}"
                     )
             
-            # Проверяем каждые 30 минут
             await asyncio.sleep(1800)
             
         except Exception as e:
@@ -627,7 +624,6 @@ async def confirm_booking(callback: types.CallbackQuery, state: FSMContext):
     bookings.append(new_booking)
     save_bookings(bookings)
     
-    # Уведомление админу
     admin_msg = (
         f"🔥 <b>НОВАЯ ЗАПИСЬ!</b>\n\n"
         f"👤 Клиент: @{callback.from_user.username or callback.from_user.full_name}\n"
@@ -639,7 +635,6 @@ async def confirm_booking(callback: types.CallbackQuery, state: FSMContext):
     )
     await notify_admin(admin_msg)
     
-    # Подтверждение клиенту
     client_msg = (
         f"✅ <b>Запись создана!</b>\n\n"
         f"💎 Услуга: {data['service_name']}\n"
@@ -758,13 +753,11 @@ async def cancel_booking(callback: types.CallbackQuery):
     save_bookings(bookings)
     
     if booking:
-        # Уведомление админу
         await notify_admin(
             f"❌ Клиент @{booking['username']} отменил запись:\n"
             f"{booking['service_name']} - {booking['date']} {booking['time']}"
         )
         
-        # Уведомление клиенту
         await notify_user(
             booking['user_id'],
             f"❌ Запись на <b>{booking['service_name']}</b> "
@@ -933,7 +926,6 @@ async def process_review_photo(message: types.Message, state: FSMContext):
         reviews.append(new_review)
         save_reviews(reviews)
         
-        # Генерируем промокод за отзыв
         promocode = generate_promo_code(message.from_user.id)
         promocodes = get_promocodes()
         new_promo = {
@@ -982,7 +974,6 @@ async def skip_photo(callback: types.CallbackQuery, state: FSMContext):
     reviews.append(new_review)
     save_reviews(reviews)
     
-    # Генерируем промокод за отзыв
     promocode = generate_promo_code(callback.from_user.id)
     promocodes = get_promocodes()
     new_promo = {
@@ -1330,13 +1321,11 @@ async def admin_booking_detail(callback: types.CallbackQuery):
     except:
         await callback.message.answer(text, reply_markup=booking_actions_keyboard(booking_id, booking['status']))
 
-# ---------- ИСПРАВЛЕННАЯ ФУНКЦИЯ ADMIN_BOOKING_ACTION ----------
 @dp.callback_query(F.data.startswith("booking_"))
 async def admin_booking_action(callback: types.CallbackQuery):
     if not is_admin(callback.from_user.id):
         return
     
-    # Парсим данные: booking_confirm_1 -> action="confirm", booking_id="1"
     parts = callback.data.replace("booking_", "").rsplit("_", 1)
     if len(parts) != 2:
         await callback.answer("❌ Неверный формат данных")
@@ -1354,7 +1343,6 @@ async def admin_booking_action(callback: types.CallbackQuery):
             
             if action == "confirm":
                 b['status'] = 'confirmed'
-                # Уведомление клиенту
                 await notify_user(
                     b['user_id'],
                     f"✅ <b>Запись подтверждена!</b>\n\n"
@@ -1384,13 +1372,11 @@ async def admin_booking_action(callback: types.CallbackQuery):
                     f"🎁 <b>Оставьте отзыв и получите промокод на 10% скидку!</b>"
                 )
                 
-                # Уведомление админу о смене статуса
                 await notify_admin(
                     f"✔️ Запись #{booking_id} отмечена как выполненная.\n"
                     f"Клиенту отправлено предложение оставить отзыв."
                 )
             
-            # Уведомление админу о смене статуса
             if old_status != b['status']:
                 await notify_admin(
                     f"📊 Статус записи #{booking_id} изменен:\n"
@@ -1403,7 +1389,6 @@ async def admin_booking_action(callback: types.CallbackQuery):
     save_bookings(bookings)
     await callback.answer(f"✅ Статус изменен")
     
-    # После изменения возвращаемся к деталям записи
     callback.data = f"admin_booking_{booking_id}"
     await admin_booking_detail(callback)
 
@@ -1468,7 +1453,6 @@ async def approve_review(callback: types.CallbackQuery):
     
     save_reviews(reviews)
     
-    # Уведомляем пользователя, что отзыв одобрен
     if review:
         await notify_user(
             review['user_id'],
@@ -1487,15 +1471,12 @@ async def reject_review(callback: types.CallbackQuery):
     review_id = int(callback.data.replace("reject_review_", ""))
     reviews = get_reviews()
     
-    # Находим отзыв перед удалением
     review = next((r for r in reviews if r['id'] == review_id), None)
     
-    # Удаляем отзыв
     reviews = [r for r in reviews if r['id'] != review_id]
     save_reviews(reviews)
     
     if review:
-        # Уведомляем пользователя
         await notify_user(
             review['user_id'],
             f"❌ <b>Ваш отзыв не прошел модерацию.</b>\n\n"
@@ -1526,10 +1507,11 @@ async def admin_promocodes(callback: types.CallbackQuery):
     if active[:5]:
         text += "📋 <b>Последние активные:</b>\n"
         for promo in active[:5]:
-            text += f"• <code>{promo['code']}</code> - {promo['discount']}% (юзер {promo['user_id']})\n"
+            user_info = "Для всех" if promo['user_id'] == 'all' else f"ID: {promo['user_id']}"
+            text += f"• <code>{promo['code']}</code> - {promo['discount']}% ({user_info})\n"
     
     kb = [
-        [InlineKeyboardButton(text="📊 Создать промокод", callback_data="admin_create_promo")],
+        [InlineKeyboardButton(text="➕ Создать промокод", callback_data="admin_create_promo")],
         [InlineKeyboardButton(text="🔙 В админку", callback_data="admin")]
     ]
     
@@ -1537,6 +1519,133 @@ async def admin_promocodes(callback: types.CallbackQuery):
         await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
     except:
         await callback.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+# ---------- СОЗДАНИЕ ПРОМОКОДА АДМИНОМ ----------
+@dp.callback_query(F.data == "admin_create_promo")
+async def admin_create_promo(callback: types.CallbackQuery, state: FSMContext):
+    """Создание промокода админом"""
+    if not is_admin(callback.from_user.id):
+        return
+    
+    await state.set_state(AdminStates.waiting_promo_user_id)
+    try:
+        await callback.message.edit_text(
+            "🎟 <b>Создание промокода</b>\n\n"
+            "Введите ID пользователя (можно узнать через @userinfobot),\n"
+            "или отправьте 'all' для создания общего промокода:",
+            reply_markup=cancel_keyboard()
+        )
+    except:
+        await callback.message.answer(
+            "🎟 <b>Создание промокода</b>\n\n"
+            "Введите ID пользователя (можно узнать через @userinfobot),\n"
+            "или отправьте 'all' для создания общего промокода:",
+            reply_markup=cancel_keyboard()
+        )
+
+@dp.message(AdminStates.waiting_promo_user_id)
+async def admin_promo_user_id(message: types.Message, state: FSMContext):
+    """Получение ID пользователя для промокода"""
+    user_input = message.text.strip()
+    
+    if user_input.lower() == 'all':
+        await state.update_data(promo_user_id='all')
+    else:
+        try:
+            user_id = int(user_input)
+            await state.update_data(promo_user_id=user_id)
+        except ValueError:
+            await message.answer("❌ Введите корректный ID пользователя или 'all'")
+            return
+    
+    await state.set_state(AdminStates.waiting_promo_discount)
+    await message.answer(
+        "🎟 Введите размер скидки в процентах (например: 10, 15, 20):",
+        reply_markup=cancel_keyboard()
+    )
+
+@dp.message(AdminStates.waiting_promo_discount)
+async def admin_promo_discount(message: types.Message, state: FSMContext):
+    """Получение размера скидки"""
+    try:
+        discount = int(message.text)
+        if discount < 1 or discount > 100:
+            await message.answer("❌ Скидка должна быть от 1 до 100%")
+            return
+    except ValueError:
+        await message.answer("❌ Введите число")
+        return
+    
+    await state.update_data(promo_discount=discount)
+    await state.set_state(AdminStates.waiting_promo_confirm)
+    
+    data = await state.get_data()
+    user_text = "ВСЕМ пользователям" if data['promo_user_id'] == 'all' else f"пользователю ID: {data['promo_user_id']}"
+    
+    await message.answer(
+        f"🎟 <b>Подтверждение промокода</b>\n\n"
+        f"Скидка: {discount}%\n"
+        f"Для: {user_text}\n\n"
+        f"Подтвердите создание:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Создать", callback_data="confirm_create_promo")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_promocodes")]
+        ])
+    )
+
+@dp.callback_query(AdminStates.waiting_promo_confirm, F.data == "confirm_create_promo")
+async def admin_confirm_create_promo(callback: types.CallbackQuery, state: FSMContext):
+    """Подтверждение создания промокода"""
+    data = await state.get_data()
+    
+    promocodes = get_promocodes()
+    
+    promo_code = generate_promo_code(0)
+    
+    new_promo = {
+        "id": len(promocodes) + 1,
+        "user_id": data['promo_user_id'],
+        "code": promo_code,
+        "discount": data['promo_discount'],
+        "used": False,
+        "created_at": datetime.now().isoformat(),
+        "expires": (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d"),
+        "created_by": "admin"
+    }
+    promocodes.append(new_promo)
+    save_promocodes(promocodes)
+    
+    if data['promo_user_id'] != 'all':
+        try:
+            await bot.send_message(
+                data['promo_user_id'],
+                f"🎁 <b>Вам выдан промокод!</b>\n\n"
+                f"Код: <code>{promo_code}</code>\n"
+                f"Скидка: {data['promo_discount']}%\n"
+                f"Действителен 30 дней"
+            )
+        except Exception as e:
+            logger.error(f"Не удалось уведомить пользователя {data['promo_user_id']}: {e}")
+    
+    try:
+        await callback.message.edit_text(
+            f"✅ <b>Промокод успешно создан!</b>\n\n"
+            f"Код: <code>{promo_code}</code>\n"
+            f"Скидка: {data['promo_discount']}%\n"
+            f"Для: {'всех пользователей' if data['promo_user_id'] == 'all' else f'пользователя {data['promo_user_id']}'}\n\n"
+            f"Промокод действителен 30 дней.",
+            reply_markup=back_keyboard()
+        )
+    except:
+        await callback.message.answer(
+            f"✅ <b>Промокод успешно создан!</b>\n\n"
+            f"Код: <code>{promo_code}</code>\n"
+            f"Скидка: {data['promo_discount']}%\n"
+            f"Для: {'всех пользователей' if data['promo_user_id'] == 'all' else f'пользователя {data['promo_user_id']}'}\n\n"
+            f"Промокод действителен 30 дней.",
+            reply_markup=back_keyboard()
+        )
+    await state.clear()
 
 # ---------- СТАТИСТИКА ----------
 @dp.callback_query(F.data == "admin_stats")
@@ -1557,11 +1666,9 @@ async def admin_stats(callback: types.CallbackQuery):
     total_revenue = sum(b['price'] for b in bookings if b['status'] == 'completed')
     unique_clients = len(set(b['user_id'] for b in bookings))
     
-    # Статистика за сегодня
     today = datetime.now().strftime("%Y-%m-%d")
     today_bookings = [b for b in bookings if b['date'] == today]
     
-    # Статистика по отзывам
     total_reviews = len(reviews)
     approved_reviews = len([r for r in reviews if r.get('approved', False)])
     
@@ -1676,7 +1783,6 @@ async def broadcast_confirm(callback: types.CallbackQuery, state: FSMContext):
                 await bot.send_video(user_id, broadcast['video'], caption=broadcast['text'])
             success += 1
             
-            # Небольшая задержка, чтобы не флудить
             if success % 10 == 0:
                 await asyncio.sleep(1)
                 
@@ -1684,7 +1790,6 @@ async def broadcast_confirm(callback: types.CallbackQuery, state: FSMContext):
             failed += 1
             logger.error(f"Ошибка отправки пользователю {user_id}: {e}")
     
-    # Уведомление админу о результате
     await callback.message.answer(
         f"✅ <b>Рассылка завершена!</b>\n\n"
         f"📨 Отправлено: {success}\n"
@@ -1692,7 +1797,6 @@ async def broadcast_confirm(callback: types.CallbackQuery, state: FSMContext):
         reply_markup=admin_menu()
     )
     
-    # Детальный отчет в лог
     await notify_admin(
         f"📊 <b>Отчет о рассылке:</b>\n"
         f"Успешно: {success}\n"
@@ -1705,7 +1809,6 @@ async def broadcast_confirm(callback: types.CallbackQuery, state: FSMContext):
 # ЗАПУСК ПЛАНИРОВЩИКА
 # ============================================
 async def scheduler():
-    """Запускает планировщик напоминаний"""
     await check_reminders()
 
 # ============================================
@@ -1714,10 +1817,7 @@ async def scheduler():
 async def start_bot():
     try:
         logger.info("Запускаем бота через aiogram...")
-        
-        # Запускаем планировщик в фоне
         asyncio.create_task(scheduler())
-        
         await dp.start_polling(bot, handle_signals=False)
     except Exception as e:
         logger.error(f"Ошибка бота: {e}", exc_info=True)

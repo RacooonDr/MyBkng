@@ -8,6 +8,7 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandStart
 from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton,
+    ReplyKeyboardMarkup, KeyboardButton,
     FSInputFile
 )
 from aiogram.fsm.context import FSMContext
@@ -20,6 +21,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 TOKEN = os.environ.get('BOT_TOKEN')
 ADMIN_ID = 775020198  # ← ТВОЙ ID
 REVIEWS_CHANNEL_ID = int(os.environ.get('REVIEWS_CHANNEL_ID', 0))  # ID канала для фото
+WELCOME_PHOTO_LINK = os.environ.get('WELCOME_PHOTO_LINK')  # Ссылка на приветственное фото
 PORT = int(os.environ.get('PORT', 8080))
 
 # Логи
@@ -315,7 +317,7 @@ def cancel_keyboard():
 # ---------- СТАРТ ----------
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
-    """Приветствие с картинкой"""
+    """Приветствие с картинкой из Telegram-канала"""
     user = message.from_user
     logger.info(f"Пользователь {user.full_name} запустил бота")
     
@@ -333,21 +335,26 @@ async def cmd_start(message: types.Message):
         f"👇 <b>Выбери, что хочешь посмотреть:</b>"
     )
     
-    # Отправляем фото (если есть)
-    try:
-        photo = FSInputFile("welcome.jpg")
-        await message.answer_photo(
-            photo=photo,
-            caption=welcome_text,
-            parse_mode="HTML",
-            reply_markup=main_menu()
-        )
-    except:
-        await message.answer(
-            welcome_text,
-            parse_mode="HTML",
-            reply_markup=main_menu()
-        )
+    # Пробуем отправить картинку из канала по ссылке
+    if WELCOME_PHOTO_LINK:
+        try:
+            # Пытаемся отправить фото по ссылке
+            await message.answer_photo(
+                photo=WELCOME_PHOTO_LINK,
+                caption=welcome_text,
+                parse_mode="HTML",
+                reply_markup=main_menu()
+            )
+            return
+        except Exception as e:
+            logger.error(f"Не удалось отправить фото по ссылке: {e}")
+    
+    # Если что-то пошло не так - отправляем без фото
+    await message.answer(
+        welcome_text,
+        parse_mode="HTML",
+        reply_markup=main_menu()
+    )
 
 # ---------- ОБРАБОТКА КНОПОК ----------
 @dp.callback_query(F.data == "back")

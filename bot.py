@@ -805,7 +805,7 @@ async def show_info(callback: types.CallbackQuery):
         "⚠️ <b>Важно:</b>\n"
         "• Отмена записи возможна не позднее, чем за 2 часа\n"
         "• При опоздании более 15 минут запись может быть отменена\n"
-        "• По всем вопросам пишите @support"
+        "• По всем вопросам пишите @x40vef4yX"
     )
     
     await callback.message.edit_text(

@@ -15,6 +15,7 @@ from aiogram.types import (
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.client.default import DefaultBotProperties  # ← ВАЖНО!
 
 # ============================================
 # НАСТРОЙКИ
@@ -42,7 +43,7 @@ def health():
 
 # === Инициализация бота ===
 storage = MemoryStorage()
-bot = Bot(token=TOKEN, parse_mode="HTML")
+bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))  # ← ИСПРАВЛЕНО!
 dp = Dispatcher(storage=storage)
 
 # ============================================
@@ -1288,9 +1289,11 @@ async def approve_review(callback: types.CallbackQuery):
     review_id = int(callback.data.replace("approve_review_", ""))
     reviews = get_reviews()
     
-    for review in reviews:
-        if review['id'] == review_id:
-            review['approved'] = True
+    review = None
+    for r in reviews:
+        if r['id'] == review_id:
+            r['approved'] = True
+            review = r
             break
     
     save_reviews(reviews)

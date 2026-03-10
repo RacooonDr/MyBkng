@@ -1,4 +1,3 @@
 aiogram
 Flask
 gunicorn
-requests

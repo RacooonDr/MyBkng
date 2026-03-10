@@ -1,23 +1,20 @@
 import os
 import logging
-import threading
 import asyncio
+import threading
 from flask import Flask
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ============================================
 # НАСТРОЙКИ
 # ============================================
 TOKEN = os.environ.get('BOT_TOKEN')
-ADMIN_ID = 775020198
 PORT = int(os.environ.get('PORT', 8080))
 
 # Логи
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # === Flask ===
@@ -31,60 +28,54 @@ def home():
 def health():
     return "OK", 200
 
-# === ОБРАБОТЧИКИ ===
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Приветствие"""
-    user = update.effective_user
-    logger.info(f"Пользователь {user.first_name} запустил бота")
+# === Инициализация бота ===
+bot = Bot(token=TOKEN)
+dp = Dispatcher()
+
+# === Обработчики команд ===
+@dp.message(Command("start"))
+async def cmd_start(message: types.Message):
+    """Обработчик /start"""
+    user = message.from_user
+    logger.info(f"Пользователь {user.full_name} запустил бота")
     
-    keyboard = [[InlineKeyboardButton("🛠 Услуги", callback_data="services")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[[
+            InlineKeyboardButton(text="🛠 Услуги", callback_data="services")
+        ]]
+    )
     
-    await update.message.reply_text(
+    await message.answer(
         f"🔥 Привет, {user.first_name}! Я жив!",
-        reply_markup=reply_markup
+        reply_markup=keyboard
     )
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка кнопок"""
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("Скоро тут будут услуги!")
+@dp.callback_query(lambda c: c.data == "services")
+async def process_callback(callback_query: types.CallbackQuery):
+    """Обработчик кнопок"""
+    await callback_query.answer()
+    await callback_query.message.edit_text("Скоро тут будут услуги!")
 
-# === ФУНКЦИЯ ЗАПУСКА БОТА ===
-def run_bot():
-    """Запуск Telegram бота в отдельном потоке"""
+# === Функция запуска бота ===
+async def start_bot():
+    """Запуск бота через aiogram"""
     try:
-        logger.info("Запускаем бота...")
-        
-        # Создаём приложение
-        app_bot = Application.builder().token(TOKEN).build()
-        
-        # Добавляем обработчики
-        app_bot.add_handler(CommandHandler("start", start))
-        app_bot.add_handler(CallbackQueryHandler(button_handler))
-        
-        logger.info("Бот настроен, начинаем polling...")
-        
-        # Запускаем бота (этот метод блокирует поток)
-        app_bot.run_polling(
-            allowed_updates=['message', 'callback_query'],
-            drop_pending_updates=True
-        )
-        
+        logger.info("Запускаем бота через aiogram...")
+        await dp.start_polling(bot)
     except Exception as e:
         logger.error(f"Ошибка бота: {e}", exc_info=True)
 
+def run_bot():
+    """Запуск асинхронной функции в отдельном потоке"""
+    asyncio.run(start_bot())
+
 # === ТОЧКА ВХОДА ===
 if __name__ == "__main__":
-    try:
-        # Запускаем бота в отдельном потоке
-        bot_thread = threading.Thread(target=run_bot, daemon=True)
-        bot_thread.start()
-        logger.info("Бот запущен в фоновом потоке")
-        
-        # Запускаем Flask
-        logger.info("Flask запускается...")
-        app.run(host="0.0.0.0", port=PORT)
-    except Exception as e:
-        logger.error(f"Ошибка при запуске: {e}")
+    # Запускаем бота в фоне
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
+    logger.info("Бот запущен в фоновом потоке")
+    
+    # Запускаем Flask
+    logger.info("Flask запускается...")
+    app.run(host="0.0.0.0", port=PORT)

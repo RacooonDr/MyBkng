@@ -1,7 +1,6 @@
 import os
 import logging
 import asyncio
-import threading
 from flask import Flask
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
@@ -58,23 +57,26 @@ async def process_callback(callback_query: types.CallbackQuery):
 
 # === Функция запуска бота ===
 async def start_bot():
-    """Запуск бота через aiogram"""
+    """Запуск бота"""
     try:
         logger.info("Запускаем бота через aiogram...")
-        await dp.start_polling(bot)
+        # Отключаем обработку сигналов
+        await dp.start_polling(bot, handle_signals=False)
     except Exception as e:
         logger.error(f"Ошибка бота: {e}", exc_info=True)
 
 def run_bot():
-    """Запуск асинхронной функции в отдельном потоке"""
+    """Запуск асинхронной функции"""
     asyncio.run(start_bot())
 
 # === ТОЧКА ВХОДА ===
 if __name__ == "__main__":
-    # Запускаем бота в фоне
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
-    bot_thread.start()
-    logger.info("Бот запущен в фоновом потоке")
+    # Запускаем бота в отдельном процессе, а не потоке
+    import multiprocessing
+    bot_process = multiprocessing.Process(target=run_bot)
+    bot_process.daemon = True
+    bot_process.start()
+    logger.info("Бот запущен в отдельном процессе")
     
     # Запускаем Flask
     logger.info("Flask запускается...")

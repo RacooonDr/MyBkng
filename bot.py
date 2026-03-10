@@ -15,7 +15,7 @@ from aiogram.types import (
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.client.default import DefaultBotProperties  # ← ВАЖНО!
+from aiogram.client.default import DefaultBotProperties
 
 # ============================================
 # НАСТРОЙКИ
@@ -43,7 +43,7 @@ def health():
 
 # === Инициализация бота ===
 storage = MemoryStorage()
-bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))  # ← ИСПРАВЛЕНО!
+bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher(storage=storage)
 
 # ============================================
@@ -434,18 +434,30 @@ async def cmd_start(message: types.Message):
 @dp.callback_query(F.data == "back")
 async def back_to_main(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback.message.edit_text(
-        "🔥 <b>Главное меню:</b>",
-        reply_markup=main_menu()
-    )
+    try:
+        await callback.message.edit_text(
+            "🔥 <b>Главное меню:</b>",
+            reply_markup=main_menu()
+        )
+    except:
+        await callback.message.answer(
+            "🔥 <b>Главное меню:</b>",
+            reply_markup=main_menu()
+        )
 
 @dp.callback_query(F.data == "cancel")
 async def cancel_action(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback.message.edit_text(
-        "❌ Действие отменено.\n\nГлавное меню:",
-        reply_markup=main_menu()
-    )
+    try:
+        await callback.message.edit_text(
+            "❌ Действие отменено.\n\nГлавное меню:",
+            reply_markup=main_menu()
+        )
+    except:
+        await callback.message.answer(
+            "❌ Действие отменено.\n\nГлавное меню:",
+            reply_markup=main_menu()
+        )
 
 # ---------- ПРОМОКОДЫ ----------
 @dp.callback_query(F.data == "my_promocodes")
@@ -454,11 +466,18 @@ async def my_promocodes(callback: types.CallbackQuery):
     user_promos = [p for p in promocodes if p['user_id'] == callback.from_user.id and not p.get('used', False)]
     
     if not user_promos:
-        await callback.message.edit_text(
-            "🎟 <b>У вас нет активных промокодов.</b>\n\n"
-            "Оставьте отзыв после сеанса и получите промокод на 10% скидку!",
-            reply_markup=back_keyboard()
-        )
+        try:
+            await callback.message.edit_text(
+                "🎟 <b>У вас нет активных промокодов.</b>\n\n"
+                "Оставьте отзыв после сеанса и получите промокод на 10% скидку!",
+                reply_markup=back_keyboard()
+            )
+        except:
+            await callback.message.answer(
+                "🎟 <b>У вас нет активных промокодов.</b>\n\n"
+                "Оставьте отзыв после сеанса и получите промокод на 10% скидку!",
+                reply_markup=back_keyboard()
+            )
         return
     
     text = "🎟 <b>Ваши промокоды:</b>\n\n"
@@ -467,10 +486,11 @@ async def my_promocodes(callback: types.CallbackQuery):
         text += f"   Действует до: {promo.get('expires', 'бессрочно')}\n\n"
     
     kb = [[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
-    await callback.message.edit_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
-    )
+    
+    try:
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    except:
+        await callback.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 # ---------- УСЛУГИ ----------
 @dp.callback_query(F.data == "services")
@@ -496,7 +516,10 @@ async def show_services(callback: types.CallbackQuery):
             text += f"⏱ {service['duration']} мин.\n"
             text += f"📝 {service['desc']}\n\n"
     
-    await callback.message.edit_text(text, reply_markup=services_keyboard())
+    try:
+        await callback.message.edit_text(text, reply_markup=services_keyboard())
+    except:
+        await callback.message.answer(text, reply_markup=services_keyboard())
 
 @dp.callback_query(F.data.startswith("service_"))
 async def service_detail(callback: types.CallbackQuery, state: FSMContext):
@@ -522,16 +545,25 @@ async def service_detail(callback: types.CallbackQuery, state: FSMContext):
         f"📝 {service['desc']}"
     )
     
-    await callback.message.edit_text(text, reply_markup=service_actions_keyboard(service_id))
+    try:
+        await callback.message.edit_text(text, reply_markup=service_actions_keyboard(service_id))
+    except:
+        await callback.message.answer(text, reply_markup=service_actions_keyboard(service_id))
 
 # ---------- ЗАПИСЬ ----------
 @dp.callback_query(F.data.startswith("book_"))
 async def start_booking(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(BookingStates.choosing_date)
-    await callback.message.edit_text(
-        "📅 Выберите дату:",
-        reply_markup=date_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            "📅 Выберите дату:",
+            reply_markup=date_keyboard()
+        )
+    except:
+        await callback.message.answer(
+            "📅 Выберите дату:",
+            reply_markup=date_keyboard()
+        )
 
 @dp.callback_query(BookingStates.choosing_date, F.data.startswith("date_"))
 async def choose_date(callback: types.CallbackQuery, state: FSMContext):
@@ -542,10 +574,16 @@ async def choose_date(callback: types.CallbackQuery, state: FSMContext):
     date_obj = datetime.strptime(date_str, "%Y-%m-%d")
     display_date = date_obj.strftime("%d.%m.%Y")
     
-    await callback.message.edit_text(
-        f"📅 Дата: {display_date}\n\n⏰ Выберите время:",
-        reply_markup=time_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            f"📅 Дата: {display_date}\n\n⏰ Выберите время:",
+            reply_markup=time_keyboard()
+        )
+    except:
+        await callback.message.answer(
+            f"📅 Дата: {display_date}\n\n⏰ Выберите время:",
+            reply_markup=time_keyboard()
+        )
 
 @dp.callback_query(BookingStates.choosing_time, F.data.startswith("time_"))
 async def choose_time(callback: types.CallbackQuery, state: FSMContext):
@@ -563,7 +601,10 @@ async def choose_time(callback: types.CallbackQuery, state: FSMContext):
         f"Всё верно?"
     )
     
-    await callback.message.edit_text(text, reply_markup=confirm_keyboard())
+    try:
+        await callback.message.edit_text(text, reply_markup=confirm_keyboard())
+    except:
+        await callback.message.answer(text, reply_markup=confirm_keyboard())
     await state.set_state(BookingStates.confirming)
 
 @dp.callback_query(BookingStates.confirming, F.data == "confirm_booking")
@@ -606,7 +647,10 @@ async def confirm_booking(callback: types.CallbackQuery, state: FSMContext):
         f"⏰ Время: {data['booking_time']}\n\n"
         f"Я отправил уведомление мастеру. Как только он подтвердит запись, вы получите уведомление."
     )
-    await callback.message.edit_text(client_msg, reply_markup=None)
+    try:
+        await callback.message.edit_text(client_msg, reply_markup=None)
+    except:
+        await callback.message.answer(client_msg, reply_markup=None)
     
     await asyncio.sleep(3)
     await callback.message.answer("🔥 Главное меню:", reply_markup=main_menu())
@@ -615,10 +659,16 @@ async def confirm_booking(callback: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data == "back_to_dates")
 async def back_to_dates(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(BookingStates.choosing_date)
-    await callback.message.edit_text(
-        "📅 Выберите дату:",
-        reply_markup=date_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            "📅 Выберите дату:",
+            reply_markup=date_keyboard()
+        )
+    except:
+        await callback.message.answer(
+            "📅 Выберите дату:",
+            reply_markup=date_keyboard()
+        )
 
 # ---------- МОИ ЗАПИСИ ----------
 @dp.callback_query(F.data == "my_bookings")
@@ -628,10 +678,16 @@ async def my_bookings(callback: types.CallbackQuery):
     user_bookings = [b for b in bookings if b['user_id'] == user_id]
     
     if not user_bookings:
-        await callback.message.edit_text(
-            "😕 У вас пока нет записей.\n\nХотите записаться? Перейдите в «🛠 Услуги».",
-            reply_markup=back_keyboard()
-        )
+        try:
+            await callback.message.edit_text(
+                "😕 У вас пока нет записей.\n\nХотите записаться? Перейдите в «🛠 Услуги».",
+                reply_markup=back_keyboard()
+            )
+        except:
+            await callback.message.answer(
+                "😕 У вас пока нет записей.\n\nХотите записаться? Перейдите в «🛠 Услуги».",
+                reply_markup=back_keyboard()
+            )
         return
     
     text = "📋 <b>Ваши записи:</b>\n\n"
@@ -653,7 +709,10 @@ async def my_bookings(callback: types.CallbackQuery):
     if pending_bookings:
         kb.insert(0, [InlineKeyboardButton(text="❌ Отменить запись", callback_data="cancel_booking_menu")])
     
-    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    try:
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    except:
+        await callback.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 @dp.callback_query(F.data == "cancel_booking_menu")
 async def cancel_booking_menu(callback: types.CallbackQuery):
@@ -673,10 +732,16 @@ async def cancel_booking_menu(callback: types.CallbackQuery):
         )])
     kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="my_bookings")])
     
-    await callback.message.edit_text(
-        "❌ Выберите запись для отмены:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
-    )
+    try:
+        await callback.message.edit_text(
+            "❌ Выберите запись для отмены:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+        )
+    except:
+        await callback.message.answer(
+            "❌ Выберите запись для отмены:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+        )
 
 @dp.callback_query(F.data.startswith("cancel_booking_"))
 async def cancel_booking(callback: types.CallbackQuery):
@@ -712,12 +777,20 @@ async def cancel_booking(callback: types.CallbackQuery):
 # ---------- ОТЗЫВЫ ----------
 @dp.callback_query(F.data == "reviews")
 async def reviews_menu(callback: types.CallbackQuery):
-    await callback.message.edit_text(
-        "⭐️ <b>Отзывы</b>\n\n"
-        "Здесь вы можете посмотреть отзывы других клиентов или оставить свой.\n\n"
-        "🎁 <b>Бонус:</b> за каждый отзыв вы получаете промокод на 10% скидку!",
-        reply_markup=reviews_menu_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            "⭐️ <b>Отзывы</b>\n\n"
+            "Здесь вы можете посмотреть отзывы других клиентов или оставить свой.\n\n"
+            "🎁 <b>Бонус:</b> за каждый отзыв вы получаете промокод на 10% скидку!",
+            reply_markup=reviews_menu_keyboard()
+        )
+    except:
+        await callback.message.answer(
+            "⭐️ <b>Отзывы</b>\n\n"
+            "Здесь вы можете посмотреть отзывы других клиентов или оставить свой.\n\n"
+            "🎁 <b>Бонус:</b> за каждый отзыв вы получаете промокод на 10% скидку!",
+            reply_markup=reviews_menu_keyboard()
+        )
 
 @dp.callback_query(F.data == "show_reviews")
 async def show_reviews(callback: types.CallbackQuery):
@@ -725,10 +798,16 @@ async def show_reviews(callback: types.CallbackQuery):
     approved = [r for r in reviews if r.get('approved', False)]
     
     if not approved:
-        await callback.message.edit_text(
-            "😕 Пока нет отзывов. Будьте первым!",
-            reply_markup=reviews_menu_keyboard()
-        )
+        try:
+            await callback.message.edit_text(
+                "😕 Пока нет отзывов. Будьте первым!",
+                reply_markup=reviews_menu_keyboard()
+            )
+        except:
+            await callback.message.answer(
+                "😕 Пока нет отзывов. Будьте первым!",
+                reply_markup=reviews_menu_keyboard()
+            )
         return
     
     kb = []
@@ -752,7 +831,10 @@ async def show_reviews(callback: types.CallbackQuery):
         text += f"👤 <b>{review['username']}</b>  {'⭐️' * review['rating']}\n"
         text += f"📝 {review['text'][:100]}...\n\n"
     
-    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    try:
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    except:
+        await callback.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 @dp.callback_query(F.data == "leave_review")
 async def leave_review(callback: types.CallbackQuery, state: FSMContext):
@@ -767,10 +849,16 @@ async def leave_review(callback: types.CallbackQuery, state: FSMContext):
         return
     
     await state.set_state(ReviewStates.waiting_text)
-    await callback.message.edit_text(
-        "📝 Напишите ваш отзыв:",
-        reply_markup=cancel_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            "📝 Напишите ваш отзыв:",
+            reply_markup=cancel_keyboard()
+        )
+    except:
+        await callback.message.answer(
+            "📝 Напишите ваш отзыв:",
+            reply_markup=cancel_keyboard()
+        )
 
 @dp.message(ReviewStates.waiting_text)
 async def process_review_text(message: types.Message, state: FSMContext):
@@ -792,17 +880,29 @@ async def process_review_rating(callback: types.CallbackQuery, state: FSMContext
     await state.update_data(rating=rating)
     await state.set_state(ReviewStates.waiting_photo)
     
-    await callback.message.edit_text(
-        "📸 Теперь можете добавить фото к отзыву (или пропустите):",
-        reply_markup=photo_options_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            "📸 Теперь можете добавить фото к отзыву (или пропустите):",
+            reply_markup=photo_options_keyboard()
+        )
+    except:
+        await callback.message.answer(
+            "📸 Теперь можете добавить фото к отзыву (или пропустите):",
+            reply_markup=photo_options_keyboard()
+        )
 
 @dp.callback_query(ReviewStates.waiting_photo, F.data == "add_photo")
 async def add_photo_prompt(callback: types.CallbackQuery):
-    await callback.message.edit_text(
-        "📸 Отправьте фото:",
-        reply_markup=cancel_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            "📸 Отправьте фото:",
+            reply_markup=cancel_keyboard()
+        )
+    except:
+        await callback.message.answer(
+            "📸 Отправьте фото:",
+            reply_markup=cancel_keyboard()
+        )
 
 @dp.message(ReviewStates.waiting_photo, F.photo)
 async def process_review_photo(message: types.Message, state: FSMContext):
@@ -897,13 +997,22 @@ async def skip_photo(callback: types.CallbackQuery, state: FSMContext):
     promocodes.append(new_promo)
     save_promocodes(promocodes)
     
-    await callback.message.edit_text(
-        f"✅ Спасибо за отзыв!\n\n"
-        f"🎁 <b>Ваш промокод на 10% скидку:</b>\n"
-        f"<code>{promocode}</code>\n\n"
-        f"Действителен 30 дней.",
-        reply_markup=main_menu()
-    )
+    try:
+        await callback.message.edit_text(
+            f"✅ Спасибо за отзыв!\n\n"
+            f"🎁 <b>Ваш промокод на 10% скидку:</b>\n"
+            f"<code>{promocode}</code>\n\n"
+            f"Действителен 30 дней.",
+            reply_markup=main_menu()
+        )
+    except:
+        await callback.message.answer(
+            f"✅ Спасибо за отзыв!\n\n"
+            f"🎁 <b>Ваш промокод на 10% скидку:</b>\n"
+            f"<code>{promocode}</code>\n\n"
+            f"Действителен 30 дней.",
+            reply_markup=main_menu()
+        )
     await state.clear()
 
 # ---------- ИНФО ----------
@@ -921,7 +1030,10 @@ async def show_info(callback: types.CallbackQuery):
         "• За отзыв вы получаете промокод на 10% скидку!"
     )
     
-    await callback.message.edit_text(text, reply_markup=back_keyboard())
+    try:
+        await callback.message.edit_text(text, reply_markup=back_keyboard())
+    except:
+        await callback.message.answer(text, reply_markup=back_keyboard())
 
 # ============================================
 # АДМИН-ПАНЕЛЬ
@@ -943,10 +1055,16 @@ async def admin_panel_callback(callback: types.CallbackQuery):
         await callback.answer("⛔️ Доступ запрещен")
         return
     
-    await callback.message.edit_text(
-        "👑 <b>Админ-панель</b>\n\nВыберите действие:",
-        reply_markup=admin_menu()
-    )
+    try:
+        await callback.message.edit_text(
+            "👑 <b>Админ-панель</b>\n\nВыберите действие:",
+            reply_markup=admin_menu()
+        )
+    except:
+        await callback.message.answer(
+            "👑 <b>Админ-панель</b>\n\nВыберите действие:",
+            reply_markup=admin_menu()
+        )
 
 # ---------- УПРАВЛЕНИЕ УСЛУГАМИ ----------
 @dp.callback_query(F.data == "admin_services")
@@ -954,10 +1072,16 @@ async def admin_services(callback: types.CallbackQuery):
     if not is_admin(callback.from_user.id):
         return
     
-    await callback.message.edit_text(
-        "📦 <b>Управление услугами</b>\n\nВыберите услугу для редактирования или добавьте новую:",
-        reply_markup=admin_services_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            "📦 <b>Управление услугами</b>\n\nВыберите услугу для редактирования или добавьте новую:",
+            reply_markup=admin_services_keyboard()
+        )
+    except:
+        await callback.message.answer(
+            "📦 <b>Управление услугами</b>\n\nВыберите услугу для редактирования или добавьте новую:",
+            reply_markup=admin_services_keyboard()
+        )
 
 @dp.callback_query(F.data == "admin_add_service")
 async def admin_add_service_start(callback: types.CallbackQuery, state: FSMContext):
@@ -965,10 +1089,16 @@ async def admin_add_service_start(callback: types.CallbackQuery, state: FSMConte
         return
     
     await state.set_state(AdminStates.adding_service_name)
-    await callback.message.edit_text(
-        "➕ <b>Добавление новой услуги</b>\n\nВведите название услуги:",
-        reply_markup=cancel_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            "➕ <b>Добавление новой услуги</b>\n\nВведите название услуги:",
+            reply_markup=cancel_keyboard()
+        )
+    except:
+        await callback.message.answer(
+            "➕ <b>Добавление новой услуги</b>\n\nВведите название услуги:",
+            reply_markup=cancel_keyboard()
+        )
 
 @dp.message(AdminStates.adding_service_name)
 async def admin_add_service_name(message: types.Message, state: FSMContext):
@@ -1057,7 +1187,10 @@ async def admin_edit_service(callback: types.CallbackQuery):
         [InlineKeyboardButton(text="🔙 К услугам", callback_data="admin_services")]
     ]
     
-    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    try:
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    except:
+        await callback.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 @dp.callback_query(F.data.startswith("admin_toggle_"))
 async def admin_toggle_service(callback: types.CallbackQuery):
@@ -1095,10 +1228,16 @@ async def admin_bookings_menu(callback: types.CallbackQuery):
     if not is_admin(callback.from_user.id):
         return
     
-    await callback.message.edit_text(
-        "📋 <b>Просмотр записей</b>\n\nВыберите фильтр:",
-        reply_markup=admin_bookings_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            "📋 <b>Просмотр записей</b>\n\nВыберите фильтр:",
+            reply_markup=admin_bookings_keyboard()
+        )
+    except:
+        await callback.message.answer(
+            "📋 <b>Просмотр записей</b>\n\nВыберите фильтр:",
+            reply_markup=admin_bookings_keyboard()
+        )
 
 @dp.callback_query(F.data.startswith("admin_bookings_"))
 async def admin_bookings_list(callback: types.CallbackQuery):
@@ -1114,10 +1253,16 @@ async def admin_bookings_list(callback: types.CallbackQuery):
     bookings = sorted(bookings, key=lambda x: x['date'], reverse=True)
     
     if not bookings:
-        await callback.message.edit_text(
-            "📋 Нет записей",
-            reply_markup=admin_bookings_keyboard()
-        )
+        try:
+            await callback.message.edit_text(
+                "📋 Нет записей",
+                reply_markup=admin_bookings_keyboard()
+            )
+        except:
+            await callback.message.answer(
+                "📋 Нет записей",
+                reply_markup=admin_bookings_keyboard()
+            )
         return
     
     text = f"📋 <b>Записи: {filter_type}</b>\n\n"
@@ -1144,7 +1289,10 @@ async def admin_bookings_list(callback: types.CallbackQuery):
         )])
     kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin_bookings")])
     
-    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    try:
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    except:
+        await callback.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 @dp.callback_query(F.data.startswith("admin_booking_"))
 async def admin_booking_detail(callback: types.CallbackQuery):
@@ -1177,7 +1325,10 @@ async def admin_booking_detail(callback: types.CallbackQuery):
         f"🕐 Создано: {booking.get('created_at', 'неизвестно')}"
     )
     
-    await callback.message.edit_text(text, reply_markup=booking_actions_keyboard(booking_id, booking['status']))
+    try:
+        await callback.message.edit_text(text, reply_markup=booking_actions_keyboard(booking_id, booking['status']))
+    except:
+        await callback.message.answer(text, reply_markup=booking_actions_keyboard(booking_id, booking['status']))
 
 @dp.callback_query(F.data.startswith("booking_"))
 async def admin_booking_action(callback: types.CallbackQuery):
@@ -1252,10 +1403,16 @@ async def admin_reviews(callback: types.CallbackQuery):
     if not is_admin(callback.from_user.id):
         return
     
-    await callback.message.edit_text(
-        "⭐️ <b>Модерация отзывов</b>\n\nВыберите отзыв для проверки:",
-        reply_markup=reviews_moderation_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            "⭐️ <b>Модерация отзывов</b>\n\nВыберите отзыв для проверки:",
+            reply_markup=reviews_moderation_keyboard()
+        )
+    except:
+        await callback.message.answer(
+            "⭐️ <b>Модерация отзывов</b>\n\nВыберите отзыв для проверки:",
+            reply_markup=reviews_moderation_keyboard()
+        )
 
 @dp.callback_query(F.data.startswith("moderate_review_"))
 async def moderate_review(callback: types.CallbackQuery):
@@ -1279,7 +1436,10 @@ async def moderate_review(callback: types.CallbackQuery):
         f"Фото: {'✅ есть' if review.get('photo_link') else '❌ нет'}"
     )
     
-    await callback.message.edit_text(text, reply_markup=review_moderate_keyboard(review_id))
+    try:
+        await callback.message.edit_text(text, reply_markup=review_moderate_keyboard(review_id))
+    except:
+        await callback.message.answer(text, reply_markup=review_moderate_keyboard(review_id))
 
 @dp.callback_query(F.data.startswith("approve_review_"))
 async def approve_review(callback: types.CallbackQuery):
@@ -1363,7 +1523,10 @@ async def admin_promocodes(callback: types.CallbackQuery):
         [InlineKeyboardButton(text="🔙 В админку", callback_data="admin")]
     ]
     
-    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    try:
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    except:
+        await callback.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 # ---------- СТАТИСТИКА ----------
 @dp.callback_query(F.data == "admin_stats")
@@ -1415,7 +1578,10 @@ async def admin_stats(callback: types.CallbackQuery):
             revenue = sum(b['price'] for b in service_completed)
             text += f"• {service['name']}: {len(service_bookings)} записей, {revenue} руб.\n"
     
-    await callback.message.edit_text(text, reply_markup=back_keyboard())
+    try:
+        await callback.message.edit_text(text, reply_markup=back_keyboard())
+    except:
+        await callback.message.answer(text, reply_markup=back_keyboard())
 
 # ---------- РАССЫЛКА ----------
 @dp.callback_query(F.data == "admin_broadcast")
@@ -1424,12 +1590,20 @@ async def admin_broadcast(callback: types.CallbackQuery, state: FSMContext):
         return
     
     await state.set_state(AdminStates.broadcast_message)
-    await callback.message.edit_text(
-        "📢 <b>Рассылка клиентам</b>\n\n"
-        "Отправьте сообщение для рассылки (текст, фото или видео):\n\n"
-        "⚠️ Будет отправлено ВСЕМ клиентам, которые хоть раз записывались!",
-        reply_markup=cancel_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            "📢 <b>Рассылка клиентам</b>\n\n"
+            "Отправьте сообщение для рассылки (текст, фото или видео):\n\n"
+            "⚠️ Будет отправлено ВСЕМ клиентам, которые хоть раз записывались!",
+            reply_markup=cancel_keyboard()
+        )
+    except:
+        await callback.message.answer(
+            "📢 <b>Рассылка клиентам</b>\n\n"
+            "Отправьте сообщение для рассылки (текст, фото или видео):\n\n"
+            "⚠️ Будет отправлено ВСЕМ клиентам, которые хоть раз записывались!",
+            reply_markup=cancel_keyboard()
+        )
 
 @dp.message(AdminStates.broadcast_message)
 async def broadcast_get_message(message: types.Message, state: FSMContext):

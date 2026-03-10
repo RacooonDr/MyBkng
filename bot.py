@@ -15,8 +15,8 @@ from telegram.ext import (
 # ============================================
 # НАСТРОЙКИ
 # ============================================
-TOKEN = os.environ.get('BOT_TOKEN')
-ADMIN_ID = 123456789  # ← ЗАМЕНИ НА СВОЙ ID (узнай у @userinfobot)
+TOKEN = os.environ.get('8650159696:AAEdmhSkQurOQQ9ADvo9qRQKxaJu_RLXDbY')
+ADMIN_ID = 775020198  # ← ЗАМЕНИ НА СВОЙ ID (узнай у @userinfobot)
 PORT = int(os.environ.get('PORT', 8080))
 
 # Включаем логирование

@@ -1632,7 +1632,7 @@ async def admin_confirm_create_promo(callback: types.CallbackQuery, state: FSMCo
             f"✅ <b>Промокод успешно создан!</b>\n\n"
             f"Код: <code>{promo_code}</code>\n"
             f"Скидка: {data['promo_discount']}%\n"
-            f"Для: {'всех пользователей' if data['promo_user_id'] == 'all' else f'пользователя {data['promo_user_id']}'}\n\n"
+            f"Для: {'всех пользователей' if data['promo_user_id'] == 'all' else 'пользователя ' + str(data['promo_user_id'])}\n\n"
             f"Промокод действителен 30 дней.",
             reply_markup=back_keyboard()
         )
@@ -1641,7 +1641,7 @@ async def admin_confirm_create_promo(callback: types.CallbackQuery, state: FSMCo
             f"✅ <b>Промокод успешно создан!</b>\n\n"
             f"Код: <code>{promo_code}</code>\n"
             f"Скидка: {data['promo_discount']}%\n"
-            f"Для: {'всех пользователей' if data['promo_user_id'] == 'all' else f'пользователя {data['promo_user_id']}'}\n\n"
+            f"Для: {'всех пользователей' if data['promo_user_id'] == 'all' else 'пользователя ' + str(data['promo_user_id'])}\n\n"
             f"Промокод действителен 30 дней.",
             reply_markup=back_keyboard()
         )

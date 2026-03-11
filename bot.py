@@ -166,39 +166,40 @@ async def notify_user(user_id: int, message: str):
 # ============================================
 async def check_reminders():
     """Проверяет записи и отправляет напоминания за 24 часа"""
+    try:
+        bookings = get_bookings()
+        now = datetime.now()
+        
+        for booking in bookings:
+            if booking['status'] != 'confirmed':
+                continue
+            
+            booking_date = datetime.strptime(f"{booking['date']} {booking['time']}", "%Y-%m-%d %H:%M")
+            time_diff = booking_date - now
+            
+            if timedelta(hours=23) < time_diff < timedelta(hours=25) and not booking.get('reminded'):
+                await notify_user(
+                    booking['user_id'],
+                    f"⏰ <b>Напоминание о записи!</b>\n\n"
+                    f"Завтра в {booking['time']} у вас запись на <b>{booking['service_name']}</b>.\n"
+                    f"Ждем вас!"
+                )
+                
+                booking['reminded'] = True
+                save_bookings(bookings)
+                
+                await notify_admin(
+                    f"⏰ Отправлено напоминание клиенту @{booking['username']}\n"
+                    f"Запись завтра в {booking['time']}"
+                )
+    except Exception as e:
+        logger.error(f"Ошибка в планировщике: {e}")
+
+async def reminder_loop():
+    """Бесконечный цикл для планировщика"""
     while True:
-        try:
-            bookings = get_bookings()
-            now = datetime.now()
-            
-            for booking in bookings:
-                if booking['status'] != 'confirmed':
-                    continue
-                
-                booking_date = datetime.strptime(f"{booking['date']} {booking['time']}", "%Y-%m-%d %H:%M")
-                time_diff = booking_date - now
-                
-                if timedelta(hours=23) < time_diff < timedelta(hours=25) and not booking.get('reminded'):
-                    await notify_user(
-                        booking['user_id'],
-                        f"⏰ <b>Напоминание о записи!</b>\n\n"
-                        f"Завтра в {booking['time']} у вас запись на <b>{booking['service_name']}</b>.\n"
-                        f"Ждем вас!"
-                    )
-                    
-                    booking['reminded'] = True
-                    save_bookings(bookings)
-                    
-                    await notify_admin(
-                        f"⏰ Отправлено напоминание клиенту @{booking['username']}\n"
-                        f"Запись завтра в {booking['time']}"
-                    )
-            
-            await asyncio.sleep(1800)  # 30 минут
-            
-        except Exception as e:
-            logger.error(f"Ошибка в планировщике: {e}")
-            await asyncio.sleep(60)
+        await check_reminders()
+        await asyncio.sleep(1800)  # 30 минут
 
 # ============================================
 # КЛАВИАТУРЫ
@@ -401,25 +402,47 @@ async def webhook():
 async def webhook_info():
     """Проверка статуса вебхука"""
     try:
-        info = await bot.get_webhook_info()
+        # Получаем информацию о боте
+        bot_info = await bot.get_me()
+        # Получаем информацию о вебхуке
+        webhook_info = await bot.get_webhook_info()
+        
         return jsonify({
-            "url": info.url,
-            "pending_updates": info.pending_update_count,
-            "last_error": info.last_error_message
+            "bot": {
+                "id": bot_info.id,
+                "username": bot_info.username,
+                "first_name": bot_info.first_name
+            },
+            "webhook": {
+                "url": webhook_info.url,
+                "pending_updates": webhook_info.pending_update_count,
+                "last_error": webhook_info.last_error_message,
+                "max_connections": webhook_info.max_connections,
+                "allowed_updates": webhook_info.allowed_updates
+            }
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Ошибка в webhook_info: {e}")
+        return jsonify({
+            "error": str(e),
+            "error_type": type(e).__name__
+        }), 500
 
 @app.route('/set_webhook', methods=['GET'])
-def set_webhook_route():
-    """Вызови этот URL один раз, чтобы настроить вебхук"""
-    webhook_url = f"{RENDER_EXTERNAL_URL}/webhook/{TOKEN}"
-    asyncio.run(set_webhook(webhook_url))
-    return f"✅ Webhook установлен на {webhook_url}", 200
-
-async def set_webhook(url):
-    await bot.set_webhook(url, allowed_updates=['message', 'callback_query'])
-    logger.info(f"Вебхук установлен: {url}")
+async def set_webhook_route():
+    """Ручная установка вебхука"""
+    try:
+        webhook_url = f"{RENDER_EXTERNAL_URL}/webhook/{TOKEN}"
+        result = await bot.set_webhook(
+            webhook_url,
+            allowed_updates=['message', 'callback_query']
+        )
+        if result:
+            return f"✅ Webhook установлен на {webhook_url}", 200
+        else:
+            return "❌ Ошибка установки вебхука", 500
+    except Exception as e:
+        return f"❌ Ошибка: {e}", 500
 
 # ============================================
 # ОБРАБОТЧИКИ
@@ -1846,40 +1869,32 @@ async def broadcast_confirm(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
 
 # ============================================
-# ЗАПУСК ПЛАНИРОВЩИКА
+# ЗАПУСК
 # ============================================
-async def check_reminders_loop():
-    """Запуск планировщика в бесконечном цикле"""
-    while True:
-        await check_reminders()
-        await asyncio.sleep(1800)  # 30 минут
+async def on_startup():
+    """Действия при запуске"""
+    logger.info("🚀 Бот запускается...")
+    
+    # Устанавливаем вебхук
+    webhook_url = f"{RENDER_EXTERNAL_URL}/webhook/{TOKEN}"
+    await bot.set_webhook(webhook_url, allowed_updates=['message', 'callback_query'])
+    logger.info(f"✅ Вебхук установлен на {webhook_url}")
+    
+    # Запускаем планировщик
+    asyncio.create_task(reminder_loop())
+    logger.info("✅ Планировщик напоминаний запущен")
 
-# ============================================
-# ЗАПУСК БОТА
-# ============================================
-async def run_bot():
-    """Запуск бота и планировщика"""
-    try:
-        # Устанавливаем вебхук
-        webhook_url = f"{RENDER_EXTERNAL_URL}/webhook/{TOKEN}"
-        await bot.set_webhook(webhook_url, allowed_updates=['message', 'callback_query'])
-        logger.info(f"✅ Вебхук установлен на {webhook_url}")
-        
-        # Запускаем планировщик в фоне
-        asyncio.create_task(check_reminders_loop())
-        logger.info("✅ Планировщик запущен")
-        
-        # Держим бота в работе
-        while True:
-            await asyncio.sleep(3600)  # Спим час, но планировщик работает
-    except Exception as e:
-        logger.error(f"❌ Ошибка запуска бота: {e}")
+async def on_shutdown():
+    """Действия при остановке"""
+    logger.info("🛑 Бот останавливается...")
+    await bot.delete_webhook()
+    await bot.session.close()
 
 if __name__ == "__main__":
-    # Запускаем бота в отдельной asyncio-задаче
+    # Запускаем startup
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.create_task(run_bot())
+    loop.run_until_complete(on_startup())
     
     # Запускаем Flask
     logger.info("🚀 Flask запускается...")

@@ -5,7 +5,7 @@ import json
 import random
 import string
 from datetime import datetime, timedelta
-from flask import Flask
+from flask import Flask, request, jsonify
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandStart
 from aiogram.types import (
@@ -22,7 +22,7 @@ from aiogram.client.default import DefaultBotProperties
 # ============================================
 TOKEN = os.environ.get('BOT_TOKEN')
 ADMIN_ID = 775020198  # ← ТВОЙ ID
-ADMIN_ID = 1478927844  # ← еще один ID
+# ADMIN_ID = 1478927844  # ← еще один ID (закомментировано)
 REVIEWS_CHANNEL_ID = int(os.environ.get('REVIEWS_CHANNEL_ID', 0))
 WELCOME_PHOTO_LINK = os.environ.get('WELCOME_PHOTO_LINK')
 PORT = int(os.environ.get('PORT', 8080))
@@ -33,14 +33,6 @@ logger = logging.getLogger(__name__)
 
 # === Flask ===
 app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Бот работает! 🤖"
-
-@app.route('/health')
-def health():
-    return "OK", 200
 
 # === Инициализация бота ===
 storage = MemoryStorage()
@@ -202,7 +194,7 @@ async def check_reminders():
                         f"Запись завтра в {booking['time']}"
                     )
             
-            await asyncio.sleep(1800)
+            await asyncio.sleep(1800)  # 30 минут
             
         except Exception as e:
             logger.error(f"Ошибка в планировщике: {e}")
@@ -381,6 +373,40 @@ def back_keyboard():
 def cancel_keyboard():
     kb = [[InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")]]
     return InlineKeyboardMarkup(inline_keyboard=kb)
+
+# ============================================
+# Flask МАРШРУТЫ
+# ============================================
+@app.route('/', methods=['GET'])
+def home():
+    return "Бот работает! 🤖"
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Эндпоинт для проверки здоровья Render"""
+    return "OK", 200
+
+@app.route(f'/webhook/{TOKEN}', methods=['POST'])
+async def webhook():
+    """Главный эндпоинт для Telegram"""
+    try:
+        update = types.Update(**request.json)
+        await dp.feed_update(bot, update)
+        return 'ok', 200
+    except Exception as e:
+        logger.error(f"Ошибка вебхука: {e}")
+        return 'error', 500
+
+@app.route('/set_webhook', methods=['GET'])
+def set_webhook_route():
+    """Вызови этот URL один раз, чтобы настроить вебхук"""
+    webhook_url = f"https://{request.host}/webhook/{TOKEN}"
+    asyncio.run(set_webhook(webhook_url))
+    return f"✅ Webhook установлен на {webhook_url}", 200
+
+async def set_webhook(url):
+    await bot.set_webhook(url, allowed_updates=['message', 'callback_query'])
+    logger.info(f"Вебхук установлен: {url}")
 
 # ============================================
 # ОБРАБОТЧИКИ
@@ -1420,7 +1446,7 @@ async def moderate_review(callback: types.CallbackQuery):
     review = next((r for r in reviews if r['id'] == review_id), None)
     
     if not review:
-        await callback.answer("❌ Отзыв не найден")
+        await callback.answer("❌ Отзыв не найдена")
         return
     
     text = (
@@ -1813,25 +1839,24 @@ async def scheduler():
     await check_reminders()
 
 # ============================================
-# ЗАПУСК БОТА
+# ОСНОВНАЯ ФУНКЦИЯ
 # ============================================
-async def start_bot():
-    try:
-        logger.info("Запускаем бота через aiogram...")
-        asyncio.create_task(scheduler())
-        await dp.start_polling(bot, handle_signals=False)
-    except Exception as e:
-        logger.error(f"Ошибка бота: {e}", exc_info=True)
+async def on_startup():
+    """Действия при запуске"""
+    logger.info("Бот запускается...")
+    asyncio.create_task(scheduler())
 
-def run_bot():
-    asyncio.run(start_bot())
+async def main():
+    await on_startup()
+    logger.info("Бот готов к работе через вебхуки!")
 
+# ============================================
+# ЗАПУСК
+# ============================================
 if __name__ == "__main__":
-    import multiprocessing
-    bot_process = multiprocessing.Process(target=run_bot)
-    bot_process.daemon = True
-    bot_process.start()
-    logger.info("Бот запущен в отдельном процессе")
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.create_task(main())
     
     logger.info("Flask запускается...")
     app.run(host="0.0.0.0", port=PORT)

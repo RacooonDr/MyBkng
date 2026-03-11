@@ -5,6 +5,7 @@ import json
 import random
 import string
 from datetime import datetime, timedelta
+from calendar import monthcalendar
 from flask import Flask, request, jsonify
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandStart
@@ -164,30 +165,154 @@ def service_actions_keyboard(service_id):
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
-def date_keyboard():
+# ============================================
+# КАЛЕНДАРЬ И ПРОВЕРКА ЗАНЯТОСТИ
+# ============================================
+def get_booked_slots(date_str):
+    """Возвращает список занятых слотов на дату"""
+    bookings = get_bookings()
+    booked = []
+    
+    for booking in bookings:
+        if booking['date'] == date_str and booking['status'] in ['pending', 'confirmed']:
+            booked.append(booking['time'])
+    
+    return booked
+
+def get_available_times(date_str):
+    """Возвращает список доступного времени"""
+    all_times = [f"{hour:02d}:00" for hour in range(10, 21)]
+    booked = get_booked_slots(date_str)
+    
+    available = [t for t in all_times if t not in booked]
+    return available
+
+def check_available_slots(date_str):
+    """Проверяет, есть ли свободные слоты на дату"""
+    available = get_available_times(date_str)
+    return len(available) > 0
+
+def generate_month_calendar(year=None, month=None):
+    """Генерирует календарь на месяц"""
+    now = datetime.now()
+    if not year:
+        year = now.year
+    if not month:
+        month = now.month
+    
+    # Получаем сетку месяца (недели)
+    cal = monthcalendar(year, month)
+    
+    # Названия дней недели
+    days_ru = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    
+    # Заголовок с месяцем
+    months_ru = [
+        "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+        "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
+    ]
+    
     kb = []
-    today = datetime.now()
-    for i in range(7):
-        date = today + timedelta(days=i)
-        date_str = date.strftime("%Y-%m-%d")
-        display = date.strftime("%d.%m (%a)")
-        kb.append([InlineKeyboardButton(
-            text=display,
-            callback_data=f"date_{date_str}"
-        )])
+    
+    # Добавляем строку с днями недели
+    week_row = []
+    for day in days_ru:
+        week_row.append(InlineKeyboardButton(text=day, callback_data="noop"))
+    kb.append(week_row)
+    
+    # Добавляем недели
+    for week in cal:
+        week_row = []
+        for day in week:
+            if day == 0:
+                # Пустой день
+                week_row.append(InlineKeyboardButton(text=" ", callback_data="noop"))
+            else:
+                date_str = f"{year}-{month:02d}-{day:02d}"
+                # Проверяем, есть ли свободные слоты
+                if check_available_slots(date_str):
+                    week_row.append(InlineKeyboardButton(
+                        text=str(day),
+                        callback_data=f"date_{date_str}"
+                    ))
+                else:
+                    # День полностью занят
+                    week_row.append(InlineKeyboardButton(
+                        text=f"❌{day}",
+                        callback_data="noop"
+                    ))
+        kb.append(week_row)
+    
+    # Кнопки навигации
+    nav_row = []
+    
+    # Предыдущий месяц
+    prev_month = month - 1
+    prev_year = year
+    if prev_month < 1:
+        prev_month = 12
+        prev_year = year - 1
+    
+    nav_row.append(InlineKeyboardButton(
+        text="◀️",
+        callback_data=f"cal_prev_{prev_year}_{prev_month}"
+    ))
+    
+    # Текущий месяц
+    nav_row.append(InlineKeyboardButton(
+        text=f"{months_ru[month-1]} {year}",
+        callback_data="noop"
+    ))
+    
+    # Следующий месяц
+    next_month = month + 1
+    next_year = year
+    if next_month > 12:
+        next_month = 1
+        next_year = year + 1
+    
+    nav_row.append(InlineKeyboardButton(
+        text="▶️",
+        callback_data=f"cal_next_{next_year}_{next_month}"
+    ))
+    
+    kb.append(nav_row)
     kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="services")])
+    
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
-def time_keyboard():
+def date_keyboard():
+    """Клавиатура с календарем на месяц"""
+    now = datetime.now()
+    return generate_month_calendar(now.year, now.month)
+
+def time_keyboard(date_str):
+    """Клавиатура с доступным временем"""
+    available_times = get_available_times(date_str)
+    
     kb = []
-    for hour in range(10, 21):
-        time_str = f"{hour:02d}:00"
+    for time in available_times:
         kb.append([InlineKeyboardButton(
-            text=time_str,
-            callback_data=f"time_{time_str}"
+            text=time,
+            callback_data=f"time_{time}"
         )])
+    
     kb.append([InlineKeyboardButton(text="🔙 К датам", callback_data="back_to_dates")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
+
+# Обработчик для навигации по календарю
+@dp.callback_query(F.data.startswith("cal_"))
+async def calendar_navigation(callback: types.CallbackQuery, state: FSMContext):
+    """Навигация по месяцам"""
+    parts = callback.data.split("_")
+    action = parts[1]
+    year = int(parts[2])
+    month = int(parts[3])
+    
+    await callback.message.edit_text(
+        "📅 Выберите дату:",
+        reply_markup=generate_month_calendar(year, month)
+    )
 
 def confirm_keyboard():
     kb = [
@@ -653,6 +778,14 @@ async def start_booking(callback: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(BookingStates.choosing_date, F.data.startswith("date_"))
 async def choose_date(callback: types.CallbackQuery, state: FSMContext):
     date_str = callback.data.replace("date_", "")
+    
+    # Проверяем, есть ли свободные слоты
+    available_times = get_available_times(date_str)
+    
+    if not available_times:
+        await callback.answer("❌ На эту дату нет свободного времени!", show_alert=True)
+        return
+    
     await state.update_data(booking_date=date_str)
     await state.set_state(BookingStates.choosing_time)
     
@@ -662,20 +795,26 @@ async def choose_date(callback: types.CallbackQuery, state: FSMContext):
     try:
         await callback.message.edit_text(
             f"📅 Дата: {display_date}\n\n⏰ Выберите время:",
-            reply_markup=time_keyboard()
+            reply_markup=time_keyboard(date_str)
         )
     except:
         await callback.message.answer(
             f"📅 Дата: {display_date}\n\n⏰ Выберите время:",
-            reply_markup=time_keyboard()
+            reply_markup=time_keyboard(date_str)
         )
 
 @dp.callback_query(BookingStates.choosing_time, F.data.startswith("time_"))
 async def choose_time(callback: types.CallbackQuery, state: FSMContext):
     time_str = callback.data.replace("time_", "")
-    await state.update_data(booking_time=time_str)
-    
     data = await state.get_data()
+    
+    # Двойная проверка - вдруг кто-то успел забронировать
+    available_times = get_available_times(data['booking_date'])
+    if time_str not in available_times:
+        await callback.answer("❌ Это время уже занято! Выберите другое.", show_alert=True)
+        return
+    
+    await state.update_data(booking_time=time_str)
     
     text = (
         f"✅ <b>Подтверждение записи</b>\n\n"
@@ -695,6 +834,13 @@ async def choose_time(callback: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(BookingStates.confirming, F.data == "confirm_booking")
 async def confirm_booking(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
+    
+    # Финальная проверка перед сохранением
+    available_times = get_available_times(data['booking_date'])
+    if data['booking_time'] not in available_times:
+        await callback.answer("❌ Это время уже занято! Начните запись заново.", show_alert=True)
+        await state.clear()
+        return
     
     bookings = get_bookings()
     new_booking = {

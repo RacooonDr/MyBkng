@@ -300,20 +300,6 @@ def time_keyboard(date_str):
     kb.append([InlineKeyboardButton(text="🔙 К датам", callback_data="back_to_dates")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
-# Обработчик для навигации по календарю
-@dp.callback_query(F.data.startswith("cal_"))
-async def calendar_navigation(callback: types.CallbackQuery, state: FSMContext):
-    """Навигация по месяцам"""
-    parts = callback.data.split("_")
-    action = parts[1]
-    year = int(parts[2])
-    month = int(parts[3])
-    
-    await callback.message.edit_text(
-        "📅 Выберите дату:",
-        reply_markup=generate_month_calendar(year, month)
-    )
-
 def confirm_keyboard():
     kb = [
         [
@@ -447,6 +433,21 @@ async def get_photo_from_link(link: str):
     except Exception as e:
         logger.error(f"Ошибка получения фото из канала: {e}")
         return None
+
+# Обработчик для навигации по календарю
+@dp.callback_query(F.data.startswith("cal_"))
+async def calendar_navigation(callback: types.CallbackQuery, state: FSMContext):
+    """Навигация по месяцам"""
+    parts = callback.data.split("_")
+    action = parts[1]
+    year = int(parts[2])
+    month = int(parts[3])
+    
+    await callback.message.edit_text(
+        "📅 Выберите дату:",
+        reply_markup=generate_month_calendar(year, month)
+    )
+
 
 async def notify_admin(message: str):
     """Отправляет уведомление админу"""

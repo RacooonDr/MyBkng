@@ -31,13 +31,11 @@ RENDER_EXTERNAL_URL = os.environ.get('RENDER_EXTERNAL_URL', 'https://mybkng.onre
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# === Flask ===
-app = Flask(__name__)
-
-# === Инициализация бота ===
-storage = MemoryStorage()
-bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
-dp = Dispatcher(storage=storage)
+# ============================================
+# ГЛОБАЛЬНЫЙ ЦИКЛ ASYNCIO
+# ============================================
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
 
 # ============================================
 # БАЗА ДАННЫХ (JSON-файлы)
@@ -121,85 +119,6 @@ class AdminStates(StatesGroup):
 # ============================================
 def is_admin(user_id: int) -> bool:
     return user_id == ADMIN_ID
-
-# ============================================
-# ФУНКЦИЯ ДЛЯ ЗАГРУЗКИ ФОТО ИЗ TELEGRAM
-# ============================================
-async def get_photo_from_link(link: str):
-    try:
-        parts = link.split('/')
-        chat_id = '-100' + parts[-2]
-        message_id = int(parts[-1])
-        
-        message = await bot.forward_message(
-            chat_id=chat_id,
-            from_chat_id=chat_id,
-            message_id=message_id
-        )
-        
-        if message.photo:
-            file_id = message.photo[-1].file_id
-            return file_id
-    except Exception as e:
-        logger.error(f"Ошибка получения фото из канала: {e}")
-        return None
-
-# ============================================
-# ФУНКЦИЯ УВЕДОМЛЕНИЙ
-# ============================================
-async def notify_admin(message: str):
-    """Отправляет уведомление админу"""
-    try:
-        await bot.send_message(ADMIN_ID, f"👑 <b>Админ:</b>\n{message}")
-    except Exception as e:
-        logger.error(f"Ошибка уведомления админа: {e}")
-
-async def notify_user(user_id: int, message: str):
-    """Отправляет уведомление пользователю"""
-    try:
-        await bot.send_message(user_id, f"📢 <b>Уведомление:</b>\n{message}")
-    except Exception as e:
-        logger.error(f"Ошибка уведомления пользователя {user_id}: {e}")
-
-# ============================================
-# ПЛАНИРОВЩИК НАПОМИНАНИЙ
-# ============================================
-async def check_reminders():
-    """Проверяет записи и отправляет напоминания за 24 часа"""
-    try:
-        bookings = get_bookings()
-        now = datetime.now()
-        
-        for booking in bookings:
-            if booking['status'] != 'confirmed':
-                continue
-            
-            booking_date = datetime.strptime(f"{booking['date']} {booking['time']}", "%Y-%m-%d %H:%M")
-            time_diff = booking_date - now
-            
-            if timedelta(hours=23) < time_diff < timedelta(hours=25) and not booking.get('reminded'):
-                await notify_user(
-                    booking['user_id'],
-                    f"⏰ <b>Напоминание о записи!</b>\n\n"
-                    f"Завтра в {booking['time']} у вас запись на <b>{booking['service_name']}</b>.\n"
-                    f"Ждем вас!"
-                )
-                
-                booking['reminded'] = True
-                save_bookings(bookings)
-                
-                await notify_admin(
-                    f"⏰ Отправлено напоминание клиенту @{booking['username']}\n"
-                    f"Запись завтра в {booking['time']}"
-                )
-    except Exception as e:
-        logger.error(f"Ошибка в планировщике: {e}")
-
-async def reminder_loop():
-    """Бесконечный цикл для планировщика"""
-    while True:
-        await check_reminders()
-        await asyncio.sleep(1800)  # 30 минут
 
 # ============================================
 # КЛАВИАТУРЫ
@@ -376,8 +295,92 @@ def cancel_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 # ============================================
-# Flask МАРШРУТЫ
+# ИНИЦИАЛИЗАЦИЯ БОТА
 # ============================================
+storage = MemoryStorage()
+bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+dp = Dispatcher(storage=storage)
+
+# ============================================
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# ============================================
+async def get_photo_from_link(link: str):
+    try:
+        parts = link.split('/')
+        chat_id = '-100' + parts[-2]
+        message_id = int(parts[-1])
+        
+        message = await bot.forward_message(
+            chat_id=chat_id,
+            from_chat_id=chat_id,
+            message_id=message_id
+        )
+        
+        if message.photo:
+            file_id = message.photo[-1].file_id
+            return file_id
+    except Exception as e:
+        logger.error(f"Ошибка получения фото из канала: {e}")
+        return None
+
+async def notify_admin(message: str):
+    """Отправляет уведомление админу"""
+    try:
+        await bot.send_message(ADMIN_ID, f"👑 <b>Админ:</b>\n{message}")
+    except Exception as e:
+        logger.error(f"Ошибка уведомления админа: {e}")
+
+async def notify_user(user_id: int, message: str):
+    """Отправляет уведомление пользователю"""
+    try:
+        await bot.send_message(user_id, f"📢 <b>Уведомление:</b>\n{message}")
+    except Exception as e:
+        logger.error(f"Ошибка уведомления пользователя {user_id}: {e}")
+
+# ============================================
+# ПЛАНИРОВЩИК НАПОМИНАНИЙ
+# ============================================
+async def check_reminders():
+    """Проверяет записи и отправляет напоминания за 24 часа"""
+    while True:
+        try:
+            bookings = get_bookings()
+            now = datetime.now()
+            
+            for booking in bookings:
+                if booking['status'] != 'confirmed':
+                    continue
+                
+                booking_date = datetime.strptime(f"{booking['date']} {booking['time']}", "%Y-%m-%d %H:%M")
+                time_diff = booking_date - now
+                
+                if timedelta(hours=23) < time_diff < timedelta(hours=25) and not booking.get('reminded'):
+                    await notify_user(
+                        booking['user_id'],
+                        f"⏰ <b>Напоминание о записи!</b>\n\n"
+                        f"Завтра в {booking['time']} у вас запись на <b>{booking['service_name']}</b>.\n"
+                        f"Ждем вас!"
+                    )
+                    
+                    booking['reminded'] = True
+                    save_bookings(bookings)
+                    
+                    await notify_admin(
+                        f"⏰ Отправлено напоминание клиенту @{booking['username']}\n"
+                        f"Запись завтра в {booking['time']}"
+                    )
+            
+            await asyncio.sleep(1800)  # 30 минут
+            
+        except Exception as e:
+            logger.error(f"Ошибка в планировщике: {e}")
+            await asyncio.sleep(60)
+
+# ============================================
+# Flask МАРШРУТЫ (СИНХРОННЫЕ)
+# ============================================
+app = Flask(__name__)
+
 @app.route('/', methods=['GET'])
 def home():
     return "Бот работает! 🤖"
@@ -388,64 +391,86 @@ def health():
     return "OK", 200
 
 @app.route(f'/webhook/{TOKEN}', methods=['POST'])
-async def webhook():
-    """Главный эндпоинт для Telegram"""
+def webhook():
+    """Синхронный обработчик вебхука"""
     try:
-        update = types.Update(**request.json)
-        await dp.feed_update(bot, update)
+        update_data = request.json
+        asyncio.run_coroutine_threadsafe(
+            process_update(update_data),
+            loop
+        )
         return 'ok', 200
     except Exception as e:
         logger.error(f"Ошибка вебхука: {e}")
         return 'error', 500
 
-@app.route('/webhook_info', methods=['GET'])
-async def webhook_info():
-    """Проверка статуса вебхука"""
+async def process_update(update_data):
+    """Асинхронная обработка апдейта"""
     try:
-        # Получаем информацию о боте
-        bot_info = await bot.get_me()
-        # Получаем информацию о вебхуке
-        webhook_info = await bot.get_webhook_info()
-        
-        return jsonify({
-            "bot": {
-                "id": bot_info.id,
-                "username": bot_info.username,
-                "first_name": bot_info.first_name
-            },
-            "webhook": {
-                "url": webhook_info.url,
-                "pending_updates": webhook_info.pending_update_count,
-                "last_error": webhook_info.last_error_message,
-                "max_connections": webhook_info.max_connections,
-                "allowed_updates": webhook_info.allowed_updates
-            }
-        })
+        update = types.Update(**update_data)
+        await dp.feed_update(bot, update)
+    except Exception as e:
+        logger.error(f"Ошибка обработки апдейта: {e}")
+
+@app.route('/webhook_info', methods=['GET'])
+def webhook_info():
+    """Информация о вебхуке"""
+    try:
+        future = asyncio.run_coroutine_threadsafe(
+            get_webhook_info(),
+            loop
+        )
+        result = future.result(timeout=5)
+        return jsonify(result)
     except Exception as e:
         logger.error(f"Ошибка в webhook_info: {e}")
-        return jsonify({
-            "error": str(e),
-            "error_type": type(e).__name__
-        }), 500
+        return jsonify({"error": str(e), "error_type": type(e).__name__}), 500
+
+async def get_webhook_info():
+    """Асинхронное получение информации"""
+    bot_info = await bot.get_me()
+    webhook_info = await bot.get_webhook_info()
+    return {
+        "bot": {
+            "id": bot_info.id,
+            "username": bot_info.username,
+            "first_name": bot_info.first_name
+        },
+        "webhook": {
+            "url": webhook_info.url,
+            "pending_updates": webhook_info.pending_update_count,
+            "last_error": webhook_info.last_error_message,
+            "max_connections": webhook_info.max_connections,
+            "allowed_updates": webhook_info.allowed_updates
+        }
+    }
 
 @app.route('/set_webhook', methods=['GET'])
-async def set_webhook_route():
+def set_webhook_route():
     """Ручная установка вебхука"""
     try:
-        webhook_url = f"{RENDER_EXTERNAL_URL}/webhook/{TOKEN}"
-        result = await bot.set_webhook(
-            webhook_url,
-            allowed_updates=['message', 'callback_query']
+        future = asyncio.run_coroutine_threadsafe(
+            set_webhook(),
+            loop
         )
-        if result:
-            return f"✅ Webhook установлен на {webhook_url}", 200
-        else:
-            return "❌ Ошибка установки вебхука", 500
+        result = future.result(timeout=5)
+        return result
     except Exception as e:
         return f"❌ Ошибка: {e}", 500
 
+async def set_webhook():
+    """Асинхронная установка вебхука"""
+    webhook_url = f"{RENDER_EXTERNAL_URL}/webhook/{TOKEN}"
+    result = await bot.set_webhook(
+        webhook_url,
+        allowed_updates=['message', 'callback_query']
+    )
+    if result:
+        return f"✅ Webhook установлен на {webhook_url}"
+    return "❌ Ошибка установки вебхука"
+
 # ============================================
-# ОБРАБОТЧИКИ
+# ОБРАБОТЧИКИ БОТА
 # ============================================
 
 # ---------- СТАРТ ----------
@@ -1881,20 +1906,19 @@ async def on_startup():
     logger.info(f"✅ Вебхук установлен на {webhook_url}")
     
     # Запускаем планировщик
-    asyncio.create_task(reminder_loop())
+    asyncio.create_task(check_reminders())
     logger.info("✅ Планировщик напоминаний запущен")
 
-async def on_shutdown():
-    """Действия при остановке"""
-    logger.info("🛑 Бот останавливается...")
-    await bot.delete_webhook()
-    await bot.session.close()
+def start_bot():
+    """Запуск бота в отдельном потоке"""
+    loop.run_until_complete(on_startup())
+    loop.run_forever()
 
 if __name__ == "__main__":
-    # Запускаем startup
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(on_startup())
+    # Запускаем бота в отдельном потоке
+    import threading
+    bot_thread = threading.Thread(target=start_bot, daemon=True)
+    bot_thread.start()
     
     # Запускаем Flask
     logger.info("🚀 Flask запускается...")

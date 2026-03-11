@@ -22,10 +22,10 @@ from aiogram.client.default import DefaultBotProperties
 # ============================================
 TOKEN = os.environ.get('BOT_TOKEN')
 ADMIN_ID = 775020198  # ← ТВОЙ ID
-# ADMIN_ID = 1478927844  # ← еще один ID (закомментировано)
 REVIEWS_CHANNEL_ID = int(os.environ.get('REVIEWS_CHANNEL_ID', 0))
 WELCOME_PHOTO_LINK = os.environ.get('WELCOME_PHOTO_LINK')
 PORT = int(os.environ.get('PORT', 8080))
+RENDER_EXTERNAL_URL = os.environ.get('RENDER_EXTERNAL_URL', 'https://mybkng.onrender.com')
 
 # Логи
 logging.basicConfig(level=logging.INFO)
@@ -397,10 +397,23 @@ async def webhook():
         logger.error(f"Ошибка вебхука: {e}")
         return 'error', 500
 
+@app.route('/webhook_info', methods=['GET'])
+async def webhook_info():
+    """Проверка статуса вебхука"""
+    try:
+        info = await bot.get_webhook_info()
+        return jsonify({
+            "url": info.url,
+            "pending_updates": info.pending_update_count,
+            "last_error": info.last_error_message
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/set_webhook', methods=['GET'])
 def set_webhook_route():
     """Вызови этот URL один раз, чтобы настроить вебхук"""
-    webhook_url = f"https://{request.host}/webhook/{TOKEN}"
+    webhook_url = f"{RENDER_EXTERNAL_URL}/webhook/{TOKEN}"
     asyncio.run(set_webhook(webhook_url))
     return f"✅ Webhook установлен на {webhook_url}", 200
 
@@ -1835,28 +1848,39 @@ async def broadcast_confirm(callback: types.CallbackQuery, state: FSMContext):
 # ============================================
 # ЗАПУСК ПЛАНИРОВЩИКА
 # ============================================
-async def scheduler():
-    await check_reminders()
+async def check_reminders_loop():
+    """Запуск планировщика в бесконечном цикле"""
+    while True:
+        await check_reminders()
+        await asyncio.sleep(1800)  # 30 минут
 
 # ============================================
-# ОСНОВНАЯ ФУНКЦИЯ
+# ЗАПУСК БОТА
 # ============================================
-async def on_startup():
-    """Действия при запуске"""
-    logger.info("Бот запускается...")
-    asyncio.create_task(scheduler())
+async def run_bot():
+    """Запуск бота и планировщика"""
+    try:
+        # Устанавливаем вебхук
+        webhook_url = f"{RENDER_EXTERNAL_URL}/webhook/{TOKEN}"
+        await bot.set_webhook(webhook_url, allowed_updates=['message', 'callback_query'])
+        logger.info(f"✅ Вебхук установлен на {webhook_url}")
+        
+        # Запускаем планировщик в фоне
+        asyncio.create_task(check_reminders_loop())
+        logger.info("✅ Планировщик запущен")
+        
+        # Держим бота в работе
+        while True:
+            await asyncio.sleep(3600)  # Спим час, но планировщик работает
+    except Exception as e:
+        logger.error(f"❌ Ошибка запуска бота: {e}")
 
-async def main():
-    await on_startup()
-    logger.info("Бот готов к работе через вебхуки!")
-
-# ============================================
-# ЗАПУСК
-# ============================================
 if __name__ == "__main__":
+    # Запускаем бота в отдельной asyncio-задаче
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.create_task(main())
+    loop.create_task(run_bot())
     
-    logger.info("Flask запускается...")
+    # Запускаем Flask
+    logger.info("🚀 Flask запускается...")
     app.run(host="0.0.0.0", port=PORT)

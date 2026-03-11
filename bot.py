@@ -640,7 +640,7 @@ async def confirm_booking(callback: types.CallbackQuery, state: FSMContext):
         f"💎 Услуга: {data['service_name']}\n"
         f"📅 Дата: {data['booking_date']}\n"
         f"⏰ Время: {data['booking_time']}\n\n"
-        f"Я отправил уведомление мастеру. Как только он подтвердит запись, вы получите уведомление."
+        f"Я отправил уведомление мастеру. Как только он подтвердит запись, вы получите уведомление. Пока можете внести предоплату мастеру - @x40vef4yX, БЕЗ ПРЕДОПЛАТЫ, ЗАПИСЬ НЕ ПОДТВЕРДИТСЯ!"
     )
     try:
         await callback.message.edit_text(client_msg, reply_markup=None)

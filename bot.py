@@ -22,6 +22,7 @@ from aiogram.client.default import DefaultBotProperties
 # ============================================
 TOKEN = os.environ.get('BOT_TOKEN')
 ADMIN_ID = 775020198  # ← ТВОЙ ID
+ADMIN_ID = 1478927844  # ← еще один ID
 REVIEWS_CHANNEL_ID = int(os.environ.get('REVIEWS_CHANNEL_ID', 0))
 WELCOME_PHOTO_LINK = os.environ.get('WELCOME_PHOTO_LINK')
 PORT = int(os.environ.get('PORT', 8080))
